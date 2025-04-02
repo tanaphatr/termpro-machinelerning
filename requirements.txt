@@ -46,7 +46,7 @@ h5py==3.12.1
 idna==3.10
 imbalanced-learn==0.12.3
 importlib_metadata==8.5.0
-ipython==9.0.2
+ipython==8.10.0
 ipython_pygments_lexers==1.1.1
 ipywidgets==8.1.5
 itsdangerous==2.2.0
