@@ -80,7 +80,7 @@ def predict_sales_api():
         X_train, X_temp, y_train, y_temp = train_test_split(X, y, test_size=0.4, shuffle=False)
         X_val, X_test, y_val, y_test = train_test_split(X_temp, y_temp, test_size=0.6, shuffle=False)
 
-        model_dir = os.path.join('ModelLstm2', product_code)
+        model_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src', 'model', 'Product', 'ModelLstm2', product_code))
         os.makedirs(model_dir, exist_ok=True)
         model = train_monthly_model(X_train, y_train, X_val, y_val, model_dir, product_code)
 
