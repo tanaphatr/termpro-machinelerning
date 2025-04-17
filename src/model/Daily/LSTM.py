@@ -166,40 +166,68 @@ def train_lstm_model(X_train, y_train, X_val, y_val):
     
     print("🛠️ กำลังสร้างโมเดลใหม่...")
     
-    # ตรวจสอบว่ามีผลลัพธ์ Grid Search เดิมหรือไม่
+    # Define model-building function
+    def create_lstm_model(lstm_units, dropout_rate, learning_rate):
+        model = Sequential([
+            Bidirectional(LSTM(lstm_units, return_sequences=True, input_shape=(X_train.shape[1], X_train.shape[2]), kernel_regularizer=l2(0.001))),
+            BatchNormalization(),
+            Dropout(dropout_rate),
+
+            Bidirectional(LSTM(lstm_units//2, return_sequences=True, kernel_regularizer=l2(0.001))),
+            BatchNormalization(),
+            Dropout(dropout_rate),
+
+            Bidirectional(LSTM(lstm_units//4, kernel_regularizer=l2(0.001))),
+            BatchNormalization(),
+            Dropout(dropout_rate),
+
+            Dense(32, activation='relu', kernel_regularizer=l2(0.001)),
+            Dense(1)
+        ])
+        
+        model.compile(
+            optimizer=Adam(learning_rate=learning_rate),
+            loss=Huber(),
+            metrics=['mae', 'mape']
+        )
+        
+        return model
+    
+    # Define parameter grid for Grid Search
+    param_grid = {
+        'lstm_units': [64, 128, 256],
+        'dropout_rate': [0.2, 0.3, 0.4],
+        'learning_rate': [0.001, 0.0005]
+    }
+    
+    # Manual Grid Search implementation
+    print("🔍 เริ่มทำ Grid Search เพื่อหาพารามิเตอร์ที่ดีที่สุด...")
+    
+    # Generate all combinations of parameters
+    param_combinations = list(itertools.product(
+        param_grid['lstm_units'],
+        param_grid['dropout_rate'],
+        param_grid['learning_rate']
+    ))
+    
+    best_mae = float('inf')
+    best_params = None
+    grid_results = []
+    
+    # Split training data for validation during grid search
+    X_grid_train, X_grid_val, y_grid_train, y_grid_val = train_test_split(
+        X_train, y_train, test_size=0.2, shuffle=False
+    )
+    
     if os.path.exists(grid_search_results_path):
-        print("📂 พบผลลัพธ์ Grid Search เดิม กำลังโหลด...")
+        print("📥 โหลดผลลัพธ์ Grid Search ที่มีอยู่แล้ว...")
         grid_search_results = joblib.load(grid_search_results_path)
         best_params = grid_search_results['best_params']
         best_mae = grid_search_results['best_mae']
-        print(f"✅ ใช้พารามิเตอร์ที่ดีที่สุดจาก Grid Search เดิม: {best_params}")
+        print(f"🏆 พารามิเตอร์ที่ดีที่สุดจาก Grid Search เดิม: {best_params}")
+        print(f"🎯 ค่า MAE ที่ดีที่สุดจาก Grid Search เดิม: {best_mae:.4f}")
     else:
-        # หากไม่มีผลลัพธ์ Grid Search เดิม ให้ทำ Grid Search ใหม่
-        print("🔍 เริ่มทำ Grid Search เพื่อหาพารามิเตอร์ที่ดีที่สุด...")
-        
-        # Define parameter grid for Grid Search
-        param_grid = {
-            'lstm_units': [64, 128, 256],
-            'dropout_rate': [0.2, 0.3, 0.4],
-            'learning_rate': [0.001, 0.0005]
-        }
-        
-        # Generate all combinations of parameters
-        param_combinations = list(itertools.product(
-            param_grid['lstm_units'],
-            param_grid['dropout_rate'],
-            param_grid['learning_rate']
-        ))
-        
-        best_mae = float('inf')
-        best_params = None
-        grid_results = []
-        
-        # Split training data for validation during grid search
-        X_grid_train, X_grid_val, y_grid_train, y_grid_val = train_test_split(
-            X_train, y_train, test_size=0.2, shuffle=False
-        )
-        
+        print("🔍 เริ่มทำ Grid Search ใหม่...")
         # Loop through all parameter combinations
         for i, (lstm_units, dropout_rate, learning_rate) in enumerate(param_combinations):
             print(f"\n🔄 ทดสอบพารามิเตอร์ชุดที่ {i+1}/{len(param_combinations)}")
@@ -218,7 +246,7 @@ def train_lstm_model(X_train, y_train, X_val, y_val):
             history = model.fit(
                 X_grid_train, y_grid_train,
                 validation_data=(X_grid_val, y_grid_val),
-                epochs=30,
+                epochs=30,  # ลดจำนวน epoch ลงเพื่อให้ grid search เร็วขึ้น
                 batch_size=32,
                 callbacks=[early_stopping],
                 verbose=1
@@ -257,7 +285,10 @@ def train_lstm_model(X_train, y_train, X_val, y_val):
             'best_mae': best_mae
         }
         joblib.dump(grid_search_results, grid_search_results_path)
-    
+        print(f"\n✅ Grid Search เสร็จสิ้น")
+        print(f"🏆 พารามิเตอร์ที่ดีที่สุด: {best_params}")
+        print(f"🎯 ค่า MAE ที่ดีที่สุด: {best_mae:.4f}")
+
     # Train final model with best parameters
     print("🔄 กำลังเทรนโมเดลสุดท้ายด้วยพารามิเตอร์ที่ดีที่สุด...")
     
@@ -289,6 +320,27 @@ def train_lstm_model(X_train, y_train, X_val, y_val):
         batch_size=32,
         callbacks=[early_stopping, reduce_lr]
     )
+    
+    # Plot training history
+    plt.figure(figsize=(12, 4))
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['loss'], label='Training Loss')
+    plt.plot(history.history['val_loss'], label='Validation Loss')
+    plt.title('Model Loss')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['mae'], label='Training MAE')
+    plt.plot(history.history['val_mae'], label='Validation MAE')
+    plt.title('Model MAE')
+    plt.xlabel('Epoch')
+    plt.ylabel('MAE')
+    plt.legend()
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(model_dir, 'training_history.png'))
     
     # Save best model and training date
     joblib.dump(final_model, model_path)
