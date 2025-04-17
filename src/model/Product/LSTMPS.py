@@ -133,13 +133,14 @@ def prepare_data(df):
     
     return np.array(X), np.array(y), df_augmented, scaler
 
-def train_lstm_model(X_train, y_train, X_val, y_val, model_dir ,product_code):
+def train_lstm_model(X_train, y_train, X_val, y_val, model_dir, product_code):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     model_dir = os.path.join(base_dir, 'ModelLstm2')
     
     # สร้าง path ของไฟล์โมเดลและวันที่เทรน
     model_path2 = os.path.join(model_dir, f'lstm_model_{product_code}.pkl')
     date_path = os.path.join(model_dir, f'last_trained_date_{product_code}.pkl')
+    best_params_path = os.path.join(model_dir, f'best_params_{product_code}.pkl')
     os.makedirs(model_dir, exist_ok=True)
 
     if os.path.exists(model_path2):
@@ -157,81 +158,76 @@ def train_lstm_model(X_train, y_train, X_val, y_val, model_dir ,product_code):
 
     print(f"🛠️ กำลังสร้างโมเดลใหม่สำหรับ {model_dir}...")
 
-    # เพิ่ม Grid Search แบบง่าย
-    print("🔍 กำลังทำ Grid Search เพื่อหาพารามิเตอร์ที่เหมาะสม...")
-    
-    # กำหนดพารามิเตอร์ที่ต้องการทดสอบ
-    param_grid = {
-        'lstm_units': [64, 128, 256],  # เพิ่ม 256 units
-        'dropout_rate': [0.2, 0.3, 0.4],
-        'learning_rate': [0.001, 0.0005]  # เพิ่ม 0.0001
-    }
-    
-    best_val_loss = float('inf')
-    best_params = {}
-    
-    # ทำ Grid Search แบบง่าย
-    for lstm_units in param_grid['lstm_units']:
-        for dropout_rate in param_grid['dropout_rate']:
-            for learning_rate in param_grid['learning_rate']:
-                print(f"ทดสอบ: lstm_units={lstm_units}, dropout_rate={dropout_rate}, learning_rate={learning_rate}")
-                # สร้างโมเดลด้วยพารามิเตอร์ปัจจุบัน แบบใหม่ที่ใช้ Input layer
-                model = Sequential([
-                    Input(shape=(X_train.shape[1], X_train.shape[2])),
-                    Bidirectional(LSTM(lstm_units, return_sequences=True)),
-                    BatchNormalization(),
-                    Dropout(dropout_rate),
-                    Bidirectional(LSTM(lstm_units//2, return_sequences=True)),
-                    BatchNormalization(),
-                    Dropout(dropout_rate-0.1),
-                    Bidirectional(LSTM(lstm_units//4)),
-                    BatchNormalization(),
-                    Dropout(dropout_rate-0.2),
-                    Dense(32, activation='relu'),
-                    Dense(1)
-                ])
-                model.compile(optimizer=Adam(learning_rate=learning_rate), loss=Huber(), metrics=['mae', 'mape'])
-                # ใช้ EarlyStopping เพื่อหยุดการเทรนเมื่อโมเดลไม่พัฒนา
-                early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, mode='min')
-                # เทรนโมเดลด้วยจำนวน epochs น้อยลงเพื่อความเร็ว
-                history = model.fit(
-                    X_train, y_train,
-                    validation_data=(X_val, y_val),
-                    epochs=30,  # ลดจำนวน epochs ลงเพื่อความเร็วในการทำ Grid Search
-                    batch_size=32,
-                    callbacks=[early_stopping],
-                    verbose=0  # ปิดการแสดงผลระหว่างเทรน
-                )
-                # ดูค่า validation loss ที่ดีที่สุุด
-                val_loss = min(history.history['val_loss'])
-                # บันทึกพารามิเตอร์ที่ดีที่สุด
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
-                    best_params = {
-                        'lstm_units': lstm_units,
-                        'dropout_rate': dropout_rate,
-                        'learning_rate': learning_rate
-                    }
-    # แสดงพารามิเตอร์ที่ดีที่สุด
-    print(f"🏆 พารามิเตอร์ที่ดีที่สุด: {best_params}")
-    print(f"🏆 ค่า validation loss ที่ดีที่สุด: {best_val_loss}")
-    # สร้างโมเดลสุดท้ายด้วยพารามิเตอร์ที่ดีที่สุด แบบใหม่ที่ใช้ Input layer
+    # ตรวจสอบว่ามีพารามิเตอร์ที่ดีที่สุดที่บันทึกไว้หรือไม่
+    if os.path.exists(best_params_path):
+        print("📥 โหลดพารามิเตอร์ที่ดีที่สุดที่บันทึกไว้")
+        best_params = joblib.load(best_params_path)
+    else:
+        print("🔍 กำลังทำ Grid Search เพื่อหาพารามิเตอร์ที่เหมาะสม...")
+        param_grid = {
+            'lstm_units': [64, 128, 256],
+            'dropout_rate': [0.2, 0.3, 0.4],
+            'learning_rate': [0.001, 0.0005]
+        }
+        best_val_loss = float('inf')
+        best_params = {}
+
+        for lstm_units in param_grid['lstm_units']:
+            for dropout_rate in param_grid['dropout_rate']:
+                for learning_rate in param_grid['learning_rate']:
+                    print(f"ทดสอบ: lstm_units={lstm_units}, dropout_rate={dropout_rate}, learning_rate={learning_rate}")
+                    model = Sequential([
+                        Input(shape=(X_train.shape[1], X_train.shape[2])),
+                        Bidirectional(LSTM(lstm_units, return_sequences=True)),
+                        BatchNormalization(),
+                        Dropout(dropout_rate),
+                        Bidirectional(LSTM(lstm_units // 2, return_sequences=True)),
+                        BatchNormalization(),
+                        Dropout(dropout_rate - 0.1),
+                        Bidirectional(LSTM(lstm_units // 4)),
+                        BatchNormalization(),
+                        Dropout(dropout_rate - 0.2),
+                        Dense(32, activation='relu'),
+                        Dense(1)
+                    ])
+                    model.compile(optimizer=Adam(learning_rate=learning_rate), loss=Huber(), metrics=['mae', 'mape'])
+                    early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, mode='min')
+                    history = model.fit(
+                        X_train, y_train,
+                        validation_data=(X_val, y_val),
+                        epochs=30,
+                        batch_size=32,
+                        callbacks=[early_stopping],
+                        verbose=0
+                    )
+                    val_loss = min(history.history['val_loss'])
+                    if val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        best_params = {
+                            'lstm_units': lstm_units,
+                            'dropout_rate': dropout_rate,
+                            'learning_rate': learning_rate
+                        }
+        print(f"🏆 พารามิเตอร์ที่ดีที่สุด: {best_params}")
+        print(f"🏆 ค่า validation loss ที่ดีที่สุด: {best_val_loss}")
+        joblib.dump(best_params, best_params_path)
+
+    # สร้างโมเดลสุดท้ายด้วยพารามิเตอร์ที่ดีที่สุด
     model = Sequential([
         Input(shape=(X_train.shape[1], X_train.shape[2])),
         Bidirectional(LSTM(best_params['lstm_units'], return_sequences=True)),
         BatchNormalization(),
         Dropout(best_params['dropout_rate']),
-        Bidirectional(LSTM(best_params['lstm_units']//2, return_sequences=True)),
+        Bidirectional(LSTM(best_params['lstm_units'] // 2, return_sequences=True)),
         BatchNormalization(),
-        Dropout(best_params['dropout_rate']-0.1),
-        Bidirectional(LSTM(best_params['lstm_units']//4)),
+        Dropout(best_params['dropout_rate'] - 0.1),
+        Bidirectional(LSTM(best_params['lstm_units'] // 4)),
         BatchNormalization(),
-        Dropout(best_params['dropout_rate']-0.2),
+        Dropout(best_params['dropout_rate'] - 0.2),
         Dense(32, activation='relu'),
         Dense(1)
     ])
     model.compile(optimizer=Adam(learning_rate=best_params['learning_rate']), loss=Huber(), metrics=['mae', 'mape'])
-    # เทรนโมเดลสุดท้ายด้วยจำนวน epochs เต็ม
     early_stopping = EarlyStopping(monitor='val_loss', patience=20, restore_best_weights=True, mode='min')
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6, verbose=1)
     
@@ -263,13 +259,8 @@ def train_lstm_model(X_train, y_train, X_val, y_val, model_dir ,product_code):
     plt.tight_layout()
     plt.savefig(os.path.join(model_dir, f'training_history_{product_code}.png'))
 
-    # บันทึกโมเดลและวันที่เทรน
     joblib.dump(model, model_path2)
     joblib.dump(datetime.now(), date_path)
-    
-    # บันทึกพารามิเตอร์ที่ดีที่สุุด
-    best_params_path = os.path.join(model_dir, f'best_params_{product_code}.pkl')
-    joblib.dump(best_params, best_params_path)
     print(f"✅ บันทึกโมเดลของ {model_dir} และวันที่เทรนล่าสุุดเรียบร้อยแล้ว")
     print(f"✅ บันทึกพารามิเตอร์ที่ดีที่สุดไว้ที่ {best_params_path}")
 
