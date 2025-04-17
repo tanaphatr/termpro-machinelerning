@@ -137,24 +137,16 @@ def train_lstm_model(X_train, y_train, X_val, y_val, model_dir, product_code):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     model_dir = os.path.join(base_dir, 'ModelLstm2')
     
-    # สร้าง path ของไฟล์โมเดลและวันที่เทรน
+    # สร้าง path ของไฟล์โมเดลและพารามิเตอร์ที่ดีที่สุด
     model_path2 = os.path.join(model_dir, f'lstm_model_{product_code}.pkl')
-    date_path = os.path.join(model_dir, f'last_trained_date_{product_code}.pkl')
     best_params_path = os.path.join(model_dir, f'best_params_{product_code}.pkl')
     os.makedirs(model_dir, exist_ok=True)
 
+    # ตรวจสอบว่าไฟล์โมเดลมีอยู่หรือไม่
     if os.path.exists(model_path2):
-        model = joblib.load(model_path2)
         print(f"📥 โหลดโมเดล {model_path2} ที่เก็บไว้แล้ว")
-        
-        if os.path.exists(date_path):
-            last_trained_date = joblib.load(date_path)
-        else:
-            last_trained_date = datetime.min
-        
-        if datetime.now() - last_trained_date < timedelta(days=30):
-            print(f"⏳ ยังไม่ถึงเวลาเทรนใหม่สำหรับ {model_dir}")
-            return model
+        model = joblib.load(model_path2)
+        return model
 
     print(f"🛠️ กำลังสร้างโมเดลใหม่สำหรับ {model_dir}...")
 
@@ -239,29 +231,9 @@ def train_lstm_model(X_train, y_train, X_val, y_val, model_dir, product_code):
         callbacks=[early_stopping, reduce_lr]
     )
 
-    plt.figure(figsize=(12, 4))
-    plt.subplot(1, 2, 1)
-    plt.plot(history.history['loss'], label='Training Loss')
-    plt.plot(history.history['val_loss'], label='Validation Loss')
-    plt.title('Model Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
-
-    plt.subplot(1, 2, 2)
-    plt.plot(history.history['mae'], label='Training MAE')
-    plt.plot(history.history['val_mae'], label='Validation MAE')
-    plt.title('Model MAE')
-    plt.xlabel('Epoch')
-    plt.ylabel('MAE')
-    plt.legend()
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(model_dir, f'training_history_{product_code}.png'))
-
+    # บันทึกโมเดลและพารามิเตอร์
     joblib.dump(model, model_path2)
-    joblib.dump(datetime.now(), date_path)
-    print(f"✅ บันทึกโมเดลของ {model_dir} และวันที่เทรนล่าสุุดเรียบร้อยแล้ว")
+    print(f"✅ บันทึกโมเดลของ {model_dir} เรียบร้อยแล้ว")
     print(f"✅ บันทึกพารามิเตอร์ที่ดีที่สุดไว้ที่ {best_params_path}")
 
     return model

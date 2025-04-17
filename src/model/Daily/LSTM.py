@@ -146,23 +146,15 @@ def train_lstm_model(X_train, y_train, X_val, y_val):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     model_dir = os.path.join(base_dir, 'ModelLstm1')
     model_path = os.path.join(model_dir, 'lstm_model1.pkl')
-    date_path = os.path.join(model_dir, 'last_trained_date1.pkl')
     grid_search_results_path = os.path.join(model_dir, 'grid_search_results.pkl')
     
     os.makedirs(model_dir, exist_ok=True)
     
+    # Check if the model already exists
     if os.path.exists(model_path):
-        model = joblib.load(model_path)
         print("📥 โหลดโมเดลจากไฟล์ที่เก็บไว้แล้ว")
-        
-        if os.path.exists(date_path):
-            last_trained_date = joblib.load(date_path)
-        else:
-            last_trained_date = datetime.min
-        
-        if datetime.now() - last_trained_date < timedelta(days=30):
-            print("⏳ ยังไม่ถึงเวลาเทรนใหม่ (ต้องรออย่างน้อย 30 วัน)")
-            return model
+        model = joblib.load(model_path)
+        return model
     
     print("🛠️ กำลังสร้างโมเดลใหม่...")
     
@@ -321,31 +313,9 @@ def train_lstm_model(X_train, y_train, X_val, y_val):
         callbacks=[early_stopping, reduce_lr]
     )
     
-    # Plot training history
-    plt.figure(figsize=(12, 4))
-    plt.subplot(1, 2, 1)
-    plt.plot(history.history['loss'], label='Training Loss')
-    plt.plot(history.history['val_loss'], label='Validation Loss')
-    plt.title('Model Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
-    
-    plt.subplot(1, 2, 2)
-    plt.plot(history.history['mae'], label='Training MAE')
-    plt.plot(history.history['val_mae'], label='Validation MAE')
-    plt.title('Model MAE')
-    plt.xlabel('Epoch')
-    plt.ylabel('MAE')
-    plt.legend()
-    
-    plt.tight_layout()
-    plt.savefig(os.path.join(model_dir, 'training_history.png'))
-    
-    # Save best model and training date
+    # Save best model
     joblib.dump(final_model, model_path)
-    joblib.dump(datetime.now(), date_path)
-    print("✅ บันทึกโมเดลและวันที่เทรนล่าสุดเรียบร้อยแล้ว")
+    print("✅ บันทึกโมเดลเรียบร้อยแล้ว")
     
     return final_model
 
