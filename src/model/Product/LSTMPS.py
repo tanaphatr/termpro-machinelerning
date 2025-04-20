@@ -16,6 +16,7 @@ from tensorflow.keras.losses import Huber
 from tensorflow.keras.callbacks import EarlyStopping, Callback, ReduceLROnPlateau
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, r2_score, root_mean_squared_error
 from tensorflow.keras.regularizers import l2
+import requests
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'PJML')))
 
@@ -91,14 +92,30 @@ def augment_time_series(df, random_seed=42):
 #     df.to_csv(filename, index=False)
 #     print(f"✅ Data saved to {filename}")
 
+def fetch_temperature_data():
+    """Fetch temperature data from the API."""
+    url = "https://termpro-api-production.up.railway.app/Temp"
+    response = requests.get(url)
+    if response.status_code == 200:
+        temp_data = pd.DataFrame(response.json())
+        temp_data['Date'] = pd.to_datetime(temp_data['date']).dt.tz_localize(None)  # Remove timezone
+        temp_data = temp_data[['Date', 'Temp']]
+        return temp_data
+    else:
+        raise Exception(f"Failed to fetch temperature data. Status code: {response.status_code}")
+
 def prepare_data(df):
 
     print("🔄 เริ่มการเตรียมข้อมูล...")
     
     df = df.copy()
-    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce').dt.tz_localize(None)  # Remove timezone
     df = df.dropna(subset=['Date'])
     
+    print("🌡️ กำลังดึงข้อมูลอุณหภูมิ...")
+    temp_data = fetch_temperature_data()
+    df = pd.merge(df, temp_data, on='Date', how='left')
+
     print("➕ กำลังเพิ่ม features...")
     df = add_time_features(df)
     df = add_lag_features(df)
@@ -109,12 +126,9 @@ def prepare_data(df):
     print("🔄 กำลังทำ Data Augmentation...")
     df_augmented = augment_time_series(df)
 
-    # Save augmented data
-    # save_to_csv(df_augmented, 'augmented_data.csv')
-
     # Scale features
     scaler = StandardScaler()
-    features = ['prev_day_diff', 'day_of_week', 'month','day_of_year','rolling_avg_60'] + \
+    features = ['prev_day_diff', 'day_of_week', 'month','day_of_year','rolling_avg_60', 'Temp'] + \
               [col for col in df.columns if 'sales_lag_' in col or 
                                           'sales_ma_' in col or 
                                           'sales_std_' in col or 

@@ -20,6 +20,7 @@ from tensorflow.keras.callbacks import EarlyStopping, Callback, ReduceLROnPlatea
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error, r2_score, root_mean_squared_error
 from tensorflow.keras.regularizers import l2
 import itertools
+import requests
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..', 'PJML')))
 
@@ -91,11 +92,39 @@ def augment_time_series(df, random_seed=42):
 #     df.to_csv(filename, index=False)
 #     print(f"✅ Data saved to {filename}")
 
+def fetch_temperature_data():
+    """
+    Fetch temperature data from the API and return it as a DataFrame.
+    """
+    url = "https://termpro-api-production.up.railway.app/Temp"
+    response = requests.get(url)
+    if response.status_code == 200:
+        temp_data = response.json()
+        temp_df = pd.DataFrame(temp_data)
+        temp_df['date'] = pd.to_datetime(temp_df['date'])
+        temp_df.rename(columns={'date': 'sale_date', 'Temp': 'temperature'}, inplace=True)
+        return temp_df
+    else:
+        raise Exception(f"Failed to fetch temperature data. Status code: {response.status_code}")
+
+def merge_temperature_data(df):
+    """
+    Merge the temperature data with the main DataFrame based on the sale_date.
+    """
+    print("🌡️ กำลังดึงข้อมูลอุณหภูมิจาก API...")
+    temp_df = fetch_temperature_data()
+    print("🔗 กำลังรวมข้อมูลอุณหภูมิกับข้อมูลหลัก...")
+    df = pd.merge(df, temp_df, on='sale_date', how='left')
+    return df
+
 def prepare_data(df):
     print("🔄 เริ่มการเตรียมข้อมูล...")
     
     df['sale_date'] = pd.to_datetime(df['sale_date'], errors='coerce')
     df = df.dropna(subset=['sale_date'])
+    
+    # Merge temperature data
+    df = merge_temperature_data(df)
     
     print("➕ กำลังเพิ่ม features...")
     df = add_time_features(df)
@@ -107,23 +136,9 @@ def prepare_data(df):
     print("🔄 กำลังทำ Data Augmentation...")
     df_augmented = augment_time_series(df)
 
-    # Save augmented data
-    # save_to_csv(df_augmented, 'augmented_data.csv')
-
-    # # Scale features
-    # scaler = StandardScaler()
-    # features = ['Temperature', 'day_of_week', 'month', 'quarter', 'year', 
-    #             'day_of_year', 'month_sin', 'month_cos', 'day_of_week_sin', 
-    #             'day_of_week_cos'] + \
-    #           [col for col in df.columns if 'sales_lag_' in col or 
-    #                                       'sales_ma_' in col or 
-    #                                       'sales_std_' in col or 
-    #                                       'sales_min_' in col or 
-    #                                       'sales_max_' in col]
-    
     # Scale features
     scaler = StandardScaler()
-    features = ['Temperature', 'prev_day_diff', 'day_of_week', 'month','day_of_year','rolling_avg_60'] + \
+    features = ['temperature', 'prev_day_diff', 'day_of_week', 'month', 'day_of_year', 'rolling_avg_60'] + \
               [col for col in df.columns if 'sales_lag_' in col or 
                                           'sales_ma_' in col or 
                                           'sales_std_' in col or 
